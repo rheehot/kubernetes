@@ -21,9 +21,10 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -33,7 +34,8 @@ import (
 )
 
 const (
-	podCgroupNamePrefix = "pod"
+	podCgroupNamePrefix             = "pod"
+	customPodPidsLimitAnnotationKey = "customPodPidLimit"
 )
 
 // podContainerManagerImpl implements podContainerManager interface.
@@ -73,6 +75,20 @@ func (m *podContainerManagerImpl) Exists(pod *v1.Pod) bool {
 	return m.cgroupManager.Exists(podContainerName)
 }
 
+func (m *podContainerManagerImpl) getCustomPodPidsLimit(pod *v1.Pod) (bool, int64) {
+	pidsLimitStr, exists := pod.Annotations[customPodPidsLimitAnnotationKey]
+	if !exists {
+		return false, 0
+	}
+
+	pidsLimit, err := strconv.ParseInt(pidsLimitStr, 10, 32)
+	if err != nil {
+		return false, 0
+	}
+
+	return true, pidsLimit
+}
+
 // EnsureExists takes a pod as argument and makes sure that
 // pod cgroup exists if qos cgroup hierarchy flag is enabled.
 // If the pod level container doesn't already exist it is created.
@@ -89,6 +105,12 @@ func (m *podContainerManagerImpl) EnsureExists(pod *v1.Pod) error {
 		if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.SupportPodPidsLimit) && m.podPidsLimit > 0 {
 			containerConfig.ResourceParameters.PidsLimit = &m.podPidsLimit
 		}
+
+		customPodPidsLimitexists, podPidsLimit := m.getCustomPodPidsLimit(pod)
+		if customPodPidsLimitexists {
+			containerConfig.ResourceParameters.PidsLimit = &podPidsLimit
+		}
+
 		if err := m.cgroupManager.Create(containerConfig); err != nil {
 			return fmt.Errorf("failed to create container for %v : %v", podContainerName, err)
 		}
