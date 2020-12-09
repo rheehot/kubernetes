@@ -35,7 +35,7 @@ import (
 
 const (
 	podCgroupNamePrefix             = "pod"
-	customPodPidsLimitAnnotationKey = "customPodPidLimit"
+	customPodPidsLimitAnnotationKey = "customPodPidsLimit"
 )
 
 // podContainerManagerImpl implements podContainerManager interface.
